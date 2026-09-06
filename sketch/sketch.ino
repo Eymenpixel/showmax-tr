@@ -1,27 +1,21 @@
 #include <WiFi.h>
-#include <ESPAsyncWebServer.h>
-#include <AsyncTCP.h>
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 #include <BLEClient.h>
 
-// Wi-Fi Bilgileri
 const char* ssid = "MULTY U";
 const char* password = "Serhat12.";
 
-// WebSocket & Web Sunucu
-AsyncWebServer server(80);
-AsyncWebSocket ws("/ws");
+WiFiServer server(80);
+WiFiClient client;
 
-// BLE Durumu
 static boolean doConnect = false;
 static boolean connected = false;
 static BLEAdvertisedDevice* myDevice = nullptr;
 static BLERemoteCharacteristic* pRemoteCharacteristic = nullptr;
 
-// HID Service & Report UUID (Standart BLE Klavye)
 static BLEUUID serviceUUID("1812");
 static BLEUUID charUUID("2A4D");
 
@@ -32,21 +26,21 @@ void notifyCallback(
   bool isNotify) {
     if (length > 2 && pData[2] != 0) {
       uint8_t keyCode = pData[2];
-      char msg[32];
-      snprintf(msg, sizeof(msg), "KEY:%d", keyCode);
-      ws.textAll(msg);
-      Serial.printf("[BLE] Tus Kodu: %d -> WS Gonderildi\n", keyCode);
+      Serial.printf("[BLE] Tus: %d\n", keyCode);
+      if (client && client.connected()) {
+        client.printf("HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: text/plain\r\n\r\nKEY:%d", keyCode);
+      }
     }
 }
 
 class MyClientCallback : public BLEClientCallbacks {
   void onConnect(BLEClient* pclient) {
     connected = true;
-    Serial.println("[BLE] MK370 Klavye Baglandi!");
+    Serial.println("[BLE] MK370 Baglandi!");
   }
   void onDisconnect(BLEClient* pclient) {
     connected = false;
-    Serial.println("[BLE] Klavye Baglantisi Koptu!");
+    Serial.println("[BLE] Baglanti Koptu!");
   }
 };
 
@@ -59,19 +53,20 @@ bool connectToServer() {
     pClient->connect(myDevice);
 
     BLERemoteService* pRemoteService = pClient->getService(serviceUUID);
-    if (pRemoteService == nullptr) {
+    if (!pRemoteService) {
       pClient->disconnect();
       return false;
     }
 
     pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID);
-    if (pRemoteCharacteristic == nullptr) {
+    if (!pRemoteCharacteristic) {
       pClient->disconnect();
       return false;
     }
 
-    if(pRemoteCharacteristic->canNotify())
+    if (pRemoteCharacteristic->canNotify()) {
       pRemoteCharacteristic->registerForNotify(notifyCallback);
+    }
 
     connected = true;
     return true;
@@ -90,62 +85,44 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
   }
 };
 
-void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
-  if (type == WS_EVT_CONNECT) {
-    Serial.printf("[WS] Tarayici baglandi: ID %u\n", client->id());
-    client->text("ESP32_CONNECTED");
-  } else if (type == WS_EVT_DISCONNECT) {
-    Serial.printf("[WS] Tarayici ayrildi: ID %u\n", client->id());
-  }
-}
-
 void setup() {
   Serial.begin(115200);
   delay(1000);
   Serial.println("\n--- ESP32-C3 Baslatiliyor ---");
 
-  // Wi-Fi Baglantisi
-  Serial.printf("Wi-Fi Baglaniliyor: %s\n", ssid);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  
-  // Serial Monitore IP Yazdirma
-  Serial.println("\n[WiFi] Baglanti Basarili!");
-  Serial.print("[WiFi] ESP32 IP Adresi: ");
+
+  Serial.println("\n[WiFi] Baglandi!");
+  Serial.print("[WiFi] IP Adresi: ");
   Serial.println(WiFi.localIP());
-  Serial.print("[WiFi] WebSocket URL: ws://");
-  Serial.print(WiFi.localIP());
-  Serial.println("/ws");
 
-  // WebSocket Baslatma
-  ws.onEvent(onWsEvent);
-  server.addHandler(&ws);
   server.begin();
-  Serial.println("[WS] Sunucu Aktif (Port: 80)");
 
-  // BLE Baslatma
   BLEDevice::init("ESP32-C3-Stream");
   BLEScan* pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setInterval(1349);
   pBLEScan->setWindow(449);
   pBLEScan->setActiveScan(true);
-  Serial.println("[BLE] MK370 Klavye araniyor...");
+  Serial.println("[BLE] MK370 araniyor...");
   pBLEScan->start(5, false);
 }
 
 void loop() {
-  if (doConnect == true) {
+  if (doConnect) {
     if (connectToServer()) {
-      Serial.println("[BLE] Eslestirme Basarili!");
-    } else {
-      Serial.println("[BLE] Baglanti Kurulamadi.");
+      Serial.println("[BLE] Eslesti!");
     }
     doConnect = false;
   }
-  ws.cleanupClients();
+
+  WiFiClient newClient = server.available();
+  if (newClient) {
+    client = newClient;
+  }
   delay(10);
 }
