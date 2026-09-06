@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Show Max Canlı</title>
+  <!-- HLS video oynatıcı kütüphanesi -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" controls autoplay playsinline></video>
+
+  <script>
+    var video = document.getElementById('video');
+    // Show Max Canlı Akış Linki
+    var streamUrl = 'https://canlitvulusal.xyz/live/showmax/index.m3u8';
+
+    if (Hls.isSupported()) {
+      var hls = new Hls();
+      hls.loadSource(streamUrl);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, function() {
+        video.play();
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = streamUrl;
+      video.addEventListener('loadedmetadata', function() {
+        video.play();
+      });
+    }
+  </script>
+</body>
+</html>
+
