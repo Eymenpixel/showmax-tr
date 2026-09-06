@@ -4,48 +4,159 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Show Max Canlı</title>
-  <!-- HLS video oynatıcı kütüphanesi -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #000;
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
-      display: flex;
-      justify-content: center;
-      align-items: center;
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: sans-serif; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+    
+    /* Şifre Giriş Ekranı */
+    #login-overlay {
+      position: fixed; inset: 0; background: #0d1117; z-index: 1000;
+      display: flex; justify-content: center; align-items: center;
     }
-    video {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
+    .login-card {
+      background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+      padding: 30px; width: 320px; display: flex; flex-direction: column; gap: 15px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    .login-card h2 { color: #fff; font-size: 20px; text-align: center; }
+    .login-card input {
+      background: #0d1117; border: 1px solid #30363d; color: #fff;
+      padding: 12px; border-radius: 6px; outline: none; font-size: 15px;
+    }
+    .login-card input:focus { border-color: #58a6ff; }
+    .login-card button {
+      background: #238636; color: #fff; border: none; padding: 12px;
+      border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 16px;
+    }
+    .login-card button:hover { background: #2ea043; }
+    #login-error { color: #f85149; font-size: 13px; text-align: center; display: none; }
+
+    /* Video Katmanı */
+    #player-container { position: relative; width: 100%; height: 100%; display: none; justify-content: center; align-items: center; }
+    video { width: 100%; height: 100%; object-fit: contain; }
+    
+    #status-badge {
+      position: absolute; top: 15px; left: 15px; padding: 6px 12px;
+      background: rgba(0,0,0,0.7); color: #ff4444; border-radius: 4px;
+      font-size: 13px; z-index: 99; pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <video id="video" controls autoplay playsinline></video>
+
+  <div id="login-overlay">
+    <div class="login-card">
+      <h2>Show Max Giriş</h2>
+      <input type="text" id="username" placeholder="Kullanıcı Adı" autofocus>
+      <input type="password" id="password" placeholder="Şifre">
+      <div id="login-error">Bilgiler hatalı!</div>
+      <button onclick="checkAuth()">Giriş Yap</button>
+    </div>
+  </div>
+
+  <div id="player-container">
+    <div id="status-badge">ESP32 Aranıyor...</div>
+    <video id="video" controls playsinline></video>
+  </div>
 
   <script>
-    var video = document.getElementById('video');
-    // Show Max Canlı Akış Linki
-    var streamUrl = 'https://canlitvulusal.xyz/live/showmax/index.m3u8';
+    const USER = "show";
+    const PASS = "max";
+    const streamUrl = "https://canlitvulusal.xyz/live/showmax/index.m3u8";
+    
+    // ESP32'nin yerel IP adresini buraya gir
+    const espIp = "192.168.1.50"; 
 
-    if (Hls.isSupported()) {
-      var hls = new Hls();
-      hls.loadSource(streamUrl);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, function() {
-        video.play();
-      });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = streamUrl;
-      video.addEventListener('loadedmetadata', function() {
-        video.play();
-      });
+    const overlay = document.getElementById('login-overlay');
+    const container = document.getElementById('player-container');
+    const errorMsg = document.getElementById('login-error');
+    const video = document.getElementById('video');
+    const statusBadge = document.getElementById('status-badge');
+
+    function checkAuth() {
+      const u = document.getElementById('username').value.trim();
+      const p = document.getElementById('password').value.trim();
+
+      if (u === USER && p === PASS) {
+        sessionStorage.setItem("auth", "true");
+        startPlayer();
+      } else {
+        errorMsg.style.display = "block";
+      }
+    }
+
+    // Giriş kutusunda Enter'a basınca çalıştır
+    document.addEventListener("keydown", function(e) {
+      if (overlay.style.display !== "none" && e.key === "Enter") {
+        checkAuth();
+      }
+    });
+
+    function startPlayer() {
+      overlay.style.display = "none";
+      container.style.display = "flex";
+
+      if (Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(streamUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = streamUrl;
+        video.addEventListener('loadedmetadata', () => video.play());
+      }
+
+      initWebSocket();
+    }
+
+    function toggleFullScreen() {
+      if (!document.fullscreenElement) {
+        container.requestFullscreen ? container.requestFullscreen() : video.webkitEnterFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    function initWebSocket() {
+      const socket = new WebSocket("ws://" + espIp + "/ws");
+
+      socket.onopen = () => {
+        statusBadge.innerText = "Logi K370 Aktif";
+        statusBadge.style.color = "#00ff66";
+        setTimeout(() => { statusBadge.style.display = "none"; }, 3000);
+      };
+
+      socket.onclose = () => {
+        statusBadge.innerText = "ESP32 Bağlantısı Kesildi";
+        statusBadge.style.color = "#ff4444";
+        statusBadge.style.display = "block";
+      };
+
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        switch(data.key) {
+          case "ENTER":
+          case "F":
+            toggleFullScreen();
+            break;
+          case "SPACE":
+            video.paused ? video.play() : video.pause();
+            break;
+          case "ARROW_UP":
+            if (video.volume < 1) video.volume = Math.min(1, video.volume + 0.1);
+            break;
+          case "ARROW_DOWN":
+            if (video.volume > 0) video.volume = Math.max(0, video.volume - 0.1);
+            break;
+        }
+      };
+    }
+
+    // Sayfa yenilendiğinde tekrar şifre sormasın
+    if (sessionStorage.getItem("auth") === "true") {
+      startPlayer();
     }
   </script>
 </body>
 </html>
-
