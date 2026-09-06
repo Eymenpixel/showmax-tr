@@ -74,13 +74,14 @@ bool connectToServer() {
 
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
-    if (advertisedDevice.haveName() && 
-       (advertisedDevice.getName().find("MK370") != std::string::npos || 
-        advertisedDevice.getName().find("Logi") != std::string::npos)) {
-      Serial.printf("[BLE] Cihaz Bulundu: %s\n", advertisedDevice.getName().c_str());
-      BLEDevice::getScan()->stop();
-      myDevice = new BLEAdvertisedDevice(advertisedDevice);
-      doConnect = true;
+    if (advertisedDevice.haveName()) {
+      String devName = advertisedDevice.getName().c_str();
+      if (devName.indexOf("MK370") != -1 || devName.indexOf("Logi") != -1) {
+        Serial.printf("[BLE] Cihaz Bulundu: %s\n", devName.c_str());
+        BLEDevice::getScan()->stop();
+        myDevice = new BLEAdvertisedDevice(advertisedDevice);
+        doConnect = true;
+      }
     }
   }
 };
@@ -120,7 +121,7 @@ void loop() {
     doConnect = false;
   }
 
-  WiFiClient newClient = server.available();
+  WiFiClient newClient = server.accept();
   if (newClient) {
     client = newClient;
   }
